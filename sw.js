@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vitallog-v1';
+const CACHE_NAME = 'vitallog-v2';
 const assets = [
   './',
   './index.html',
