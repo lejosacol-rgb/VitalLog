@@ -134,67 +134,110 @@
     </div>
 
     <script>
-        var registros = [];
+        /* 
+           EVOLUCIÓN LÓGICA V3.2.7 - PROTOCOLO DE BLINDAJE
+        */
+        const CONFIG = {
+            key: 'vital_data',
+            limit: 30
+        };
+
+        let registros = [];
 
         function guardarEnStorage() {
-            localStorage.setItem('vital_data', JSON.stringify(registros));
-        }
-
-        function cargarDeStorage() {
-            var data = localStorage.getItem('vital_data');
-            if(data) {
-                registros = JSON.parse(data);
-                renderizar();
+            try {
+                localStorage.setItem(CONFIG.key, JSON.stringify(registros));
+            } catch (e) {
+                console.error("Error de persistencia.");
             }
         }
 
-        function registrar() {
-            var sysInput = document.getElementById('sys');
-            var diaInput = document.getElementById('dia');
-            var s = parseInt(sysInput.value);
-            var d = parseInt(diaInput.value);
-            if (isNaN(s) || isNaN(d)) { alert("Ingrese números válidos"); return; }
-            var ahora = new Date();
-            var registro = {
-                sys: s,
-                dia: d,
-                fecha: ahora.getDate() + "/" + (ahora.getMonth() + 1),
-                hora: ahora.getHours() + ":" + (ahora.getMinutes() < 10 ? '0' : '') + ahora.getMinutes(),
-                estado: (s >= 140 || d >= 90) ? 'ALTA' : (s >= 130 || d >= 80) ? 'ELEVADA' : 'ÓPTIMA'
-            };
-            registros.unshift(registro);
-            guardarEnStorage();
-            renderizar();
-        }
-
-        function renderizar() {
-            var containers = [document.getElementById('h-list'), document.getElementById('modal-list')];
-            for (var i = 0; i < containers.length; i++) {
-                var c = containers[i];
-                if(!c) continue;
-                c.innerHTML = '';
-                for (var j = 0; j < registros.length; j++) {
-                    var r = registros[j];
-                    var color = r.estado === 'ALTA' ? 'text-red-400' : r.estado === 'ELEVADA' ? 'text-orange-400' : 'text-green-400';
-                    var div = document.createElement('div');
-                    div.className = 'flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/5 shrink-0';
-                    div.innerHTML = '<div class="flex flex-col"><span class="text-white font-bold">' + r.sys + '/' + r.dia + '</span><span class="text-[8px] font-bold ' + color + '">' + r.estado + '</span></div><div class="text-right"><div class="text-[10px] text-slate-300">' + r.fecha + '</div><div class="text-[8px] text-slate-500">' + r.hora + '</div></div>';
-                    c.appendChild(div);
+        function cargarDeStorage() {
+            const data = localStorage.getItem(CONFIG.key);
+            if (data) {
+                try {
+                    registros = JSON.parse(data);
+                    renderizar();
+                } catch (e) {
+                    registros = [];
                 }
             }
         }
 
-        function toggleModal(show) { document.getElementById('modal').style.display = show ? 'flex' : 'none'; }
+        function registrar() {
+            const sysInput = document.getElementById('sys');
+            const diaInput = document.getElementById('dia');
+            const s = parseInt(sysInput.value);
+            const d = parseInt(diaInput.value);
+
+            if (isNaN(s) || isNaN(d) || s < 40 || s > 250 || d < 30 || d > 150) {
+                alert("Ingrese valores válidos.");
+                return;
+            }
+
+            const ahora = new Date();
+            
+            // Clasificación exacta[cite: 1]
+            let estado, color;
+            if (s >= 140 || d >= 90) {
+                estado = 'ALTA';
+                color = 'text-red-400';
+            } else if (s >= 130 || d >= 80) {
+                estado = 'ELEVADA';
+                color = 'text-orange-400';
+            } else {
+                estado = 'ÓPTIMA';
+                color = 'text-green-400';
+            }
+
+            const registro = {
+                sys: s,
+                dia: d,
+                fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
+                hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                estado: estado,
+                color: color
+            };
+
+            registros.unshift(registro);
+            if (registros.length > CONFIG.limit) registros.pop();
+
+            guardarEnStorage();
+            renderizar();
+            if ("vibrate" in navigator) navigator.vibrate(40);
+        }
+
+        function renderizar() {
+            const lists = [document.getElementById('h-list'), document.getElementById('modal-list')];
+            const html = registros.map(r => `
+                <div class="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/5 mb-2 shrink-0">
+                    <div class="flex flex-col">
+                        <span class="text-white font-bold">${r.sys}/${r.dia}</span>
+                        <span class="text-[8px] font-bold ${r.color}">${r.estado}</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-slate-300">${r.fecha}</div>
+                        <div class="text-[8px] text-slate-500">${r.hora}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            lists.forEach(l => { if(l) l.innerHTML = html; });
+        }
+
+        function toggleModal(show) { 
+            document.getElementById('modal').style.display = show ? 'flex' : 'none'; 
+        }
 
         function enviarWhatsApp() {
             if (registros.length === 0) return;
-            var r = registros[0];
-            var texto = "*VitalLog Report*\nPresión: " + r.sys + "/" + r.dia + "\nEstado: " + r.estado + "\nHora: " + r.hora;
-            window.location.href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(texto);
+            const r = registros[0];
+            const texto = `*VitalLog Report*\n━━━━━━━━━━━━━━\nPresión: ${r.sys}/${r.dia} mmHg\nEstado: ${r.estado}\nHora: ${r.hora} (${r.fecha})`;
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
         }
 
-        // Lógica de Instalación PWA
-        var deferredPrompt;
+        // PWA LOGIC
+        let deferredPrompt;
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
@@ -205,9 +248,7 @@
             if (deferredPrompt) {
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    document.getElementById('btn-instalar').style.display = 'none';
-                }
+                if (outcome === 'accepted') document.getElementById('btn-instalar').style.display = 'none';
                 deferredPrompt = null;
             }
         });
@@ -216,7 +257,7 @@
             navigator.serviceWorker.register('sw.js');
         }
 
-        cargarDeStorage();
+        document.addEventListener('DOMContentLoaded', cargarDeStorage);
     </script>
 </body>
 </html>
